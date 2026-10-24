@@ -16,6 +16,19 @@ The C6 speaks the same line protocol as on any ESPsoup board (`INFO`, `CAPS`, `F
 
 > Status: tested on the Waveshare **ESP32-P4-Module-DEV-KIT** (P4NRW32 rev. 1.3, C6FH8). The ESP32-P4-WIFI6-DEV-KIT is electrically the same board but untested.
 
+## What you need
+
+| <a href="https://espsoup.com/go/p4-devkit"><img src="https://espsoup.com/amzimg/p4-devkit" width="170" alt="Waveshare ESP32-P4-Module-DEV-KIT"></a> |
+|:---:|
+| **Waveshare ESP32-P4-Module-DEV-KIT** ⭐ |
+| ESP32-P4 + on-module ESP32-C6, 100 Mbit RJ45 — the board this project is tested on |
+| [View on Amazon](https://espsoup.com/go/p4-devkit) |
+
+Plus a USB-C data cable and an Ethernet cable. The kit variants -A/-B/-C only add a camera or a display, which the bridge doesn't use.
+
+<sub>Affiliate link (ad). As an Amazon Associate I earn from qualifying purchases — it costs you nothing extra and keeps the soup cooking.
+Product photo comes from Amazon.</sub>
+
 ## Flashing
 
 Plug a USB-C cable into the socket labelled **USB**, not "USB TO UART". The flasher writes the bridge to the P4 through its ROM bootloader. It then sends ESPsoup to the C6 *through the bridge*, so the C6 never needs a cable of its own. A factory board, whose C6 still runs ESP-Hosted, works the same way: the bridge detects ESP-Hosted and uses its OTA path.
