@@ -1,0 +1,11 @@
+{
+  "board": "Waveshare ESP32-P4-Module-DEV-KIT (ESP32-P4 + ESP32-C6)",
+  "p4": [
+    { "offset": "0x2000",  "file": "p4/bootloader.bin" },
+    { "offset": "0x8000",  "file": "p4/partition-table.bin" },
+    { "offset": "0xf000",  "file": "p4/ota_data_initial.bin" },
+    { "offset": "0x20000", "file": "p4/p4bridge.bin" }
+  ],
+  "c6": { "file": "c6/espsoup-c6-sdio.bin", "source": "https://github.com/pit711/espsoup-firmware", "commit": "356b5ae", "license": "GPL-3.0-or-later" },
+  "hosted": { "file": "c6/esp-hosted-2.13.0-c6-sdio.bin", "source": "https://github.com/espressif/esp-hosted-mcu", "version": "2.13.0", "license": "Apache-2.0" }
+}

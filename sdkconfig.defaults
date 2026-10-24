@@ -1,0 +1,42 @@
+CONFIG_IDF_TARGET="esp32p4"
+CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y
+CONFIG_ESP32P4_REV_MIN_100=y
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESP_TASK_WDT_EN=n
+CONFIG_FREERTOS_HZ=1000
+# Logs on UART0 (CH343, "USB TO UART"); USB-Serial/JTAG is the data port.
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
+# C6 over SDIO through ESP-Hosted (flash path)
+CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE=y
+CONFIG_SLAVE_IDF_TARGET_ESP32C6=y
+CONFIG_ESP_WIFI_REMOTE_LIBRARY_HOSTED=y
+# Ethernet: internal EMAC, RMII, IP101
+CONFIG_ETH_ENABLED=y
+CONFIG_ETH_USE_ESP32_EMAC=y
+CONFIG_ETH_PHY_INTERFACE_RMII=y
+CONFIG_ETH_RMII_CLK_INPUT=y
+CONFIG_LWIP_TCP_NODELAY=y
+CONFIG_LOG_COLORS=n
+# Two app slots: the bridge updates itself over USB/TCP ("P4 UPDATE").
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+# A whole 32 KB SDIO read is handed to lwIP at once; keep it from blocking.
+CONFIG_LWIP_TCP_SND_BUF_DEFAULT=65535
+CONFIG_LWIP_TCP_WND_DEFAULT=65535
+CONFIG_ETH_DMA_TX_BUFFER_NUM=20
+# -O2: the per-transaction software cost of the SDMMC host driver matters at 50 MHz.
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+# Web app from the "www" LittleFS partition on port 80, C6 stream over a
+# WebSocket (web.c). httpd: 8 client sockets + 3 internal, TCP 5555: 2.
+CONFIG_HTTPD_WS_SUPPORT=y
+CONFIG_LWIP_MAX_SOCKETS=16
+# Files are read through the flash cache (memcpy), not esp_partition_read,
+# which would stall both cores for every read.
+CONFIG_LITTLEFS_MMAP_PARTITION=y
+# 32 MB PSRAM, handed out only on request (MALLOC_CAP_SPIRAM): the bridge's
+# own buffers stay in internal RAM, ESP-Hosted's SDIO buffers (factory C6)
+# go to PSRAM; without that they no longer fit next to the web server.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_USE_CAPS_ALLOC=y
+CONFIG_ESP_HOSTED_MEMPOOL_PREFER_SPIRAM=y

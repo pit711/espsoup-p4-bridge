@@ -1,0 +1,5 @@
+dependencies:
+  espressif/esp_wifi_remote: "*"
+  espressif/esp_hosted: "^2"
+  espressif/esp_serial_slave_link: "^1.1"
+  joltwallet/littlefs: "^1"

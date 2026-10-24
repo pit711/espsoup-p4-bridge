@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ESPsoup P4 Flasher</title>
+<style>
+  :root { --bg:#f6f7f9; --fg:#1b1f24; --muted:#5b6470; --card:#fff; --line:#d9dde3; --accent:#0a7d5a; --err:#b42318; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#111418; --fg:#e6e9ee; --muted:#9aa4b1; --card:#1a1f25; --line:#2c333c; --accent:#3ccf9a; --err:#ff7a6b; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:24px 16px 48px; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  p.sub { color:var(--muted); margin:0 0 20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:16px; }
+  label { display:block; margin:6px 0; }
+  button { font:inherit; padding:10px 18px; border-radius:8px; border:0; background:var(--accent); color:#fff; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
+  progress { width:100%; height:14px; margin-top:12px; }
+  #status { margin-top:8px; font-weight:600; }
+  #status.err { color:var(--err); }
+  pre { background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px; height:260px; overflow:auto; font-size:12px; white-space:pre-wrap; margin:0; }
+  code { font-size:13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>ESPsoup P4 Flasher</h1>
+  <p class="sub">Waveshare ESP32-P4 module: P4 bridge over USB, then ESPsoup onto the on-module ESP32-C6. Chrome or Edge, USB-C socket labelled <b>USB</b>.</p>
+
+  <div class="card">
+    <label><input type="radio" name="what" value="all" checked> P4 bridge + ESPsoup on the C6 (first install)</label>
+    <label><input type="radio" name="what" value="p4"> Only the P4 bridge</label>
+    <label><input type="radio" name="what" value="c6"> Only ESPsoup on the C6 (bridge already installed)</label>
+    <label><input type="radio" name="what" value="hosted"> C6 back to ESP-Hosted (Wi-Fi coprocessor)</label>
+    <p style="margin:12px 0 0"><button id="go">Connect and flash</button></p>
+    <progress id="bar" max="1" value="0"></progress>
+    <div id="status"></div>
+  </div>
+
+  <div class="card"><pre id="log"></pre></div>
+</main>
+
+<script type="module">
+import { ESPLoader, Transport } from "https://cdn.jsdelivr.net/npm/esptool-js@0.5.7/bundle.js";
+
+const $ = (id) => document.getElementById(id);
+const log = (s) => { $("log").textContent += s + "\n"; $("log").scrollTop = 1e9; };
+const status = (s, err) => { $("status").textContent = s; $("status").className = err ? "err" : ""; };
+const progress = (v) => { $("bar").value = v; };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
+  return t;
+})();
+function crc32(buf) {
+  let c = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+async function fetchBin(file) {
+  const r = await fetch("../firmware/" + file);
+  if (!r.ok) throw new Error(file + ": HTTP " + r.status);
+  return new Uint8Array(await r.arrayBuffer());
+}
+const binString = (u8) => { let s = ""; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return s; };
+
+/* ---- step 1: the P4 itself, through its ROM bootloader (esptool-js) ---- */
+async function flashP4(port, manifest) {
+  const files = [];
+  for (const p of manifest.p4) files.push({ data: binString(await fetchBin(p.file)), address: parseInt(p.offset, 16) });
+  const transport = new Transport(port, false);
+  const loader = new ESPLoader({ transport, baudrate: 921600, romBaudrate: 115200,
+    terminal: { clean() {}, writeLine: log, write: (s) => log(s) } });
+  status("Connecting to the P4 bootloader...");
+  const chip = await loader.main();
+  log("chip: " + chip);
+  if (!/ESP32-P4/i.test(chip)) throw new Error("this is not an ESP32-P4 (" + chip + ")");
+  status("Writing the P4 bridge...");
+  const total = files.reduce((a, f) => a + f.data.length, 0);
+  let done = 0;
+  await loader.writeFlash({ fileArray: files, flashSize: "keep", flashMode: "keep", flashFreq: "keep",
+    eraseAll: false, compress: true,
+    reportProgress: (i, written) => progress((done + written) / total * (manifest.c6 ? 0.5 : 1)),
+  });
+  await loader.after("hard_reset");
+  await transport.disconnect();
+}
+
+/* ---- step 2: the C6, through the bridge ("P4 OTA", stop-and-wait) ---- */
+class Bridge {
+  constructor(port) { this.port = port; this.buf = ""; this.lines = []; this.waiters = []; }
+  async open() {
+    for (let i = 0; i < 40; i++) {           // the P4 re-enumerates after a reset
+      try { await this.port.open({ baudRate: 2000000 }); break; }
+      catch (e) { if (i === 39) throw e; await sleep(500); }
+    }
+    // USB-Serial/JTAG resets the chip on DTR/RTS: keep both low.
+    await this.port.setSignals({ dataTerminalReady: false, requestToSend: false });
+    this.writer = this.port.writable.getWriter();
+    this.reader = this.port.readable.getReader();
+    this.closed = false;
+    this.pump();
+  }
+  async pump() {
+    const dec = new TextDecoder();
+    try {
+      for (;;) {
+        const { value, done } = await this.reader.read();
+        if (done) break;
+        this.buf += dec.decode(value, { stream: true });
+        let i;
+        while ((i = this.buf.indexOf("\n")) >= 0) {
+          const l = this.buf.slice(0, i).replace(/\r$/, "");
+          this.buf = this.buf.slice(i + 1);
+          if (l.startsWith("#")) { log(l); continue; }
+          this.lines.push(l);
+          this.waiters.splice(0).forEach((w) => w());
+        }
+      }
+    } catch (e) { /* port lost: the bridge restarted */ }
+    this.closed = true;
+    this.waiters.splice(0).forEach((w) => w());
+  }
+  async close() {
+    try { this.reader.cancel(); } catch (e) {}
+    try { this.reader.releaseLock(); this.writer.releaseLock(); await this.port.close(); } catch (e) {}
+  }
+  send(data) { return this.writer.write(typeof data === "string" ? new TextEncoder().encode(data) : data); }
+  async line(ms) {
+    const t = Date.now() + ms;
+    while (!this.lines.length) {
+      if (this.closed || Date.now() > t) return null;
+      await Promise.race([new Promise((r) => this.waiters.push(r)), sleep(Math.max(1, t - Date.now()))]);
+    }
+    return this.lines.shift();
+  }
+}
+
+async function waitMode(port, seconds) {
+  const end = Date.now() + seconds * 1000;
+  let b = null;
+  while (Date.now() < end) {
+    try {
+      if (!b || b.closed) { if (b) await b.close(); b = new Bridge(port); await b.open(); }
+      b.lines = [];
+      await b.send("P4 INFO\n");
+      let r;
+      while ((r = await b.line(2000)) !== null && !r.startsWith("P4 mode=")) {}
+      if (r) {
+        log(r);
+        const mode = r.split(" ")[1].split("=")[1];
+        if (mode === "bridge" || mode === "hosted") return { b, mode };
+      }
+    } catch (e) { if (b) { await b.close(); b = null; } }
+    await sleep(1000);
+  }
+  throw new Error("the bridge did not finish probing the C6");
+}
+
+async function flashC6(port, file, base) {
+  status("Waiting for the bridge to find the C6...");
+  let { b, mode } = await waitMode(port, 60);
+  const data = await fetchBin(file);
+  log(`C6 runs ${mode}; sending ${file} (${data.length} bytes)`);
+  status("Writing the C6 firmware...");
+  await b.send(`P4 OTA ${data.length} ${crc32(data).toString(16).padStart(8, "0")}\n`);
+  let r;
+  while ((r = await b.line(10000)) !== null && !r.startsWith("P4 READY")) {
+    log(r);
+    if (r.startsWith("P4 ERR")) throw new Error(r);
+  }
+  if (r === null) throw new Error("no P4 READY");
+  const chunk = parseInt(r.split(" ")[2] || "1400", 10);
+  for (let off = 0; off < data.length; off += chunk) {
+    await b.send(data.subarray(off, off + chunk));
+    while ((r = await b.line(10000)) !== null && !r.startsWith("P4 ACK")) {
+      log(r);
+      if (r.startsWith("P4 ERR")) throw new Error(r);
+    }
+    if (r === null) throw new Error("no ACK at " + off);
+    progress(base + (1 - base) * Math.min(1, (off + chunk) / data.length));
+  }
+  status("C6 restarts, probing again...");
+  while ((r = await b.line(30000)) !== null && !r.startsWith("P4 MODE")) {
+    log(r);
+    if (r.startsWith("P4 ERR")) throw new Error(r);
+  }
+  await b.close();
+  ({ b, mode } = await waitMode(port, 60));
+  await b.close();
+  return mode;
+}
+
+$("go").onclick = async () => {
+  if (!("serial" in navigator)) { status("This browser has no Web Serial. Use Chrome or Edge.", true); return; }
+  const what = document.querySelector("input[name=what]:checked").value;
+  $("go").disabled = true; progress(0); $("log").textContent = "";
+  try {
+    const manifest = await (await fetch("../firmware/manifest.json")).json();
+    const port = await navigator.serial.requestPort({ filters: [{ usbVendorId: 0x303a }] });
+    if (what === "all" || what === "p4") {
+      await flashP4(port, what === "all" ? manifest : { p4: manifest.p4 });
+      await sleep(2000);
+    }
+    if (what !== "p4") {
+      const file = what === "hosted" ? manifest.hosted.file : manifest.c6.file;
+      const mode = await flashC6(port, file, what === "all" ? 0.5 : 0);
+      log("C6 now runs: " + (mode === "bridge" ? "ESPsoup (bridge mode)" : "ESP-Hosted"));
+    }
+    progress(1);
+    status("Done. Plug in Ethernet; the bridge gets an address by DHCP (TCP 5555, HTTP 80).");
+  } catch (e) {
+    log(String(e && e.stack || e));
+    status(String(e.message || e), true);
+  } finally { $("go").disabled = false; }
+};
+</script>
+</body>
+</html>

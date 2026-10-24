@@ -1,0 +1,11 @@
+# ESP32-P4 bridge, 16 MB flash. Two app slots so the bridge can update itself
+# over USB or TCP ("P4 UPDATE"); the first flash goes in with idf.py flash.
+# "www": LittleFS image with the ESPsoup web app, served on HTTP port 80
+# (build/www.bin, flashed with idf.py flash or uploaded with "P4 WWW").
+# Name,     Type, SubType, Offset,   Size
+nvs,        data, nvs,     0x9000,   0x6000
+otadata,    data, ota,     0xf000,   0x2000
+phy_init,   data, phy,     0x11000,  0x1000
+ota_0,      app,  ota_0,   0x20000,  0x200000
+ota_1,      app,  ota_1,   0x220000, 0x200000
+www,        data, spiffs,  0x420000, 0x600000
