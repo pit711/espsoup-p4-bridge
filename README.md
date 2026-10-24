@@ -22,13 +22,9 @@ Plug a USB-C cable into the socket labelled **USB**, not "USB TO UART". The flas
 
 ### Web flasher (Chrome or Edge)
 
-Web Serial only works on `https://` or `localhost`. From the repository root:
+**<https://pit711.github.io/espsoup-p4-bridge/flasher/>**
 
-```
-python -m http.server 8000
-```
-
-Open <http://localhost:8000/flasher/>, pick *P4 bridge + ESPsoup on the C6*, click **Connect and flash** and choose the "USB JTAG/serial debug unit" port. The flasher can also update only the P4 or only the C6, or put ESP-Hosted back on the C6 to get Wi-Fi again.
+Pick *P4 bridge + ESPsoup on the C6*, click **Connect and flash** and choose the "USB JTAG/serial debug unit" port. The flasher can also update only the P4 or only the C6, or put ESP-Hosted back on the C6 to get Wi-Fi again. Offline it runs the same from a clone: `python -m http.server 8000` in the repository root, then <http://localhost:8000/flasher/> (Web Serial needs `https://` or `localhost`).
 
 ### Command line
 
@@ -172,8 +168,8 @@ python tools/p4tool.py -t <ip> update build/p4bridge.bin     # over the LAN
 idf.py -p COM21 flash                 # or the first time over USB
 ```
 
-The C6 side is the `esp32c6-sdio` profile of [espsoup-firmware](https://github.com/pit711/espsoup-firmware) (SDIO slave transport, in-band OTA, faster frames).
+The C6 side is the `esp32c6-sdio` profile of [espsoup-firmware](https://github.com/pit711/espsoup-firmware), branch [`p4-sdio`](https://github.com/pit711/espsoup-firmware/tree/p4-sdio) (SDIO slave transport, in-band OTA, faster frames).
 
 ## License
 
-The bridge is licensed GPL-3.0-or-later (see `LICENSE`), like the ESPsoup firmware it talks to. The ESPsoup C6 image in `firmware/c6/` is GPL-3.0-or-later and was built from espsoup-firmware commit `356b5ae`. The ESP-Hosted image is © Espressif, Apache-2.0. ESP-SDR is by [ESPARGOS](https://github.com/ESPARGOS/esp-sdr). esptool-js is loaded from jsDelivr by the web flasher.
+The bridge is licensed GPL-3.0-or-later (see `LICENSE`), like the ESPsoup firmware it talks to. The ESPsoup C6 image in `firmware/c6/` is GPL-3.0-or-later and was built from espsoup-firmware commit [`356b5ae`](https://github.com/pit711/espsoup-firmware/commit/356b5ae) (branch `p4-sdio`). The ESP-Hosted image is © Espressif, Apache-2.0. ESP-SDR is by [ESPARGOS](https://github.com/ESPARGOS/esp-sdr). esptool-js is loaded from jsDelivr by the web flasher.
